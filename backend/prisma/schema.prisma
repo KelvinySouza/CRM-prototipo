@@ -1,0 +1,250 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── MULTI-TENANT ────────────────────────────────────────────────────────────
+
+model Company {
+  id            String   @id @default(uuid())
+  name          String
+  domain        String   @unique
+  logo          String?
+  primaryColor  String   @default("#6366f1")
+  createdAt     DateTime @default(now())
+
+  users         User[]
+  customers     Customer[]
+  conversations Conversation[]
+  leads         Lead[]
+  products      Product[]
+  orders        Order[]
+  settings      Settings?
+
+  @@map("companies")
+}
+
+// ─── USERS ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(EMPLOYEE)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  permissions   Permission?
+  conversations Conversation[] @relation("AssignedConversations")
+  messages      Message[]
+
+  @@map("users")
+}
+
+model Permission {
+  id              String  @id @default(uuid())
+  canViewReports  Boolean @default(false)
+  canEditStock    Boolean @default(false)
+  canViewFinance  Boolean @default(false)
+  canManageUsers  Boolean @default(false)
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@map("permissions")
+}
+
+// ─── CUSTOMERS ───────────────────────────────────────────────────────────────
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String?
+  phone     String
+  email     String?
+  createdAt DateTime @default(now())
+
+  companyId     String
+  company       Company        @relation(fields: [companyId], references: [id])
+  conversations Conversation[]
+  leads         Lead[]
+  orders        Order[]
+
+  @@unique([phone, companyId])
+  @@map("customers")
+}
+
+// ─── INBOX ───────────────────────────────────────────────────────────────────
+
+enum ConversationStatus {
+  OPEN
+  CLOSED
+  PENDING
+}
+
+enum ConversationChannel {
+  WHATSAPP
+  INSTAGRAM
+  MANUAL
+}
+
+model Conversation {
+  id        String              @id @default(uuid())
+  status    ConversationStatus  @default(OPEN)
+  channel   ConversationChannel @default(WHATSAPP)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+
+  assignedTo  String?
+  assignee    User?    @relation("AssignedConversations", fields: [assignedTo], references: [id])
+
+  messages    Message[]
+
+  @@map("conversations")
+}
+
+enum SenderType {
+  CLIENT
+  USER
+  BOT
+}
+
+model Message {
+  id        String     @id @default(uuid())
+  content   String
+  sender    SenderType
+  read      Boolean    @default(false)
+  createdAt DateTime   @default(now())
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  userId  String?
+  user    User?   @relation(fields: [userId], references: [id])
+
+  @@map("messages")
+}
+
+// ─── CRM / FUNIL ─────────────────────────────────────────────────────────────
+
+enum LeadStage {
+  NOVO
+  CONTATO
+  PROPOSTA
+  NEGOCIACAO
+  FECHADO
+  PERDIDO
+}
+
+model Lead {
+  id        String    @id @default(uuid())
+  title     String
+  stage     LeadStage @default(NOVO)
+  value     Float?
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id])
+
+  @@map("leads")
+}
+
+// ─── PRODUTOS / ESTOQUE ──────────────────────────────────────────────────────
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  price       Float
+  stock       Int      @default(0)
+  image       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  companyId  String
+  company    Company     @relation(fields: [companyId], references: [id])
+  orderItems OrderItem[]
+
+  @@map("products")
+}
+
+// ─── PEDIDOS ─────────────────────────────────────────────────────────────────
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+model Order {
+  id        String      @id @default(uuid())
+  total     Float
+  status    OrderStatus @default(PENDING)
+  createdAt DateTime    @default(now())
+
+  customerId String
+  customer   Customer    @relation(fields: [customerId], references: [id])
+
+  companyId  String
+  company    Company     @relation(fields: [companyId], references: [id])
+
+  items      OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id       String @id @default(uuid())
+  quantity Int
+  price    Float
+
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+// ─── CONFIGURAÇÕES ───────────────────────────────────────────────────────────
+
+model Settings {
+  id                  String  @id @default(uuid())
+  whatsappNumber      String?
+  whatsappToken       String?
+  instagramConnected  Boolean @default(false)
+  instagramToken      String?
+  autoReplyEnabled    Boolean @default(false)
+  autoReplyMessage    String?
+
+  companyId String  @unique
+  company   Company @relation(fields: [companyId], references: [id])
+
+  @@map("settings")
+}
